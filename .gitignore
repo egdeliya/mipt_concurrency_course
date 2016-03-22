@@ -10,3 +10,5 @@
 *.exe
 *.sdf
 *.ilk
+*.VC.opendb
+*.vs
