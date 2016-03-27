@@ -14,9 +14,9 @@ public:
 
 	thread_safe_queue& operator=(thread_safe_queue<T> &) = delete;
 
-	void enqueue(const T& item);
+	void enqueue(const T&);
 
-	void pop(T& item);
+	void pop(T&);
 
 private:
 	std::queue <T> intern;
