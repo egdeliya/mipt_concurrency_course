@@ -8,10 +8,10 @@ void thread_safe_queue<T>::enqueue(const T& item)
 	overflow.wait(locker, [this]() {return intern.size() < over_size; });
 
 	intern.push(item);
-
-	locker.unlock();
-
+	
 	empty.notify_all();
+
+	//locker.unlock();
 }
 
 template <typename T>
@@ -23,9 +23,10 @@ void thread_safe_queue<T>::pop(T& item)
 
 	item = intern.front();
 	intern.pop();
-
-	locker.unlock();
-
+	
 	overflow.notify_all();
+
+	//locker.unlock();
+
 }
 

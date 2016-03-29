@@ -13,10 +13,12 @@ public:
 	thread_safe_queue(thread_safe_queue<T> &) = delete;
 
 	thread_safe_queue& operator=(thread_safe_queue<T> &) = delete;
-
+	
 	void enqueue(const T&);
 
 	void pop(T&);
+
+	//T&& move_pop();
 
 private:
 	std::queue <T> intern;

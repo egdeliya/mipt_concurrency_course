@@ -7,9 +7,7 @@
 #include <future>
 #include <functional>
 
-template <class R>
-class invoke;
-
+//template <class R, class... A>
 template <class R>
 class thread_pool
 {
@@ -19,9 +17,9 @@ public:
 	{
 		unsigned workers_number = default_num_workers();
 		
-		workers.resize(workers_number);
+		workers.reserve(workers_number);
 
-		//инициализируем все потоки
+		//this method initializes all threads
 		initializer();
 
 	}
@@ -32,10 +30,14 @@ public:
 		initializer();
 	}
 
-	std::future<R> submit(std::packaged_task<R()> foo)
+	//std::future<R(A ...)> submit(std::packaged_task<R(A ...)> foo)
+	std::future<R> submit(std::packaged_task<R()>&& foo)
 	{
-		task_queue.enqueue(foo);
-		std::future<R()> result = foo.get_future();
+		//task_queue.enqueue(std::make_shared<std::packaged_task<R(A ...)>>(foo));
+		//std::future<R(A ...)> result = foo.get_future();
+
+		task_queue.enqueue(std::make_shared<std::packaged_task<R()>>(foo));
+		std::future<R> result = foo.get_future();
 		return result;
 	}
 
@@ -43,7 +45,8 @@ public:
 	{
 		for (size_t i = 0; i < workers.size(); i++)
 		{
-			workers[i].first = 0;
+			//to stop workers[i] 
+			workers[i].first = false;
 		}
 		
 		for (size_t i = 0; i < workers.size() ; i++)
@@ -59,31 +62,27 @@ public:
 
 protected:
 
-	//static void invoke(size_t thread_id)
-	//{
-	//	std::packaged_task<R()> current_task;
-
-	//	while (workers[thread_id].first)
-	//	{
-	//		task_queue.pop(current_task);
-	//		current_task();
-	//	}
-	//}
-
 	void initializer()
 	{
 		for (size_t i = 0; i < workers.size(); i++)
 		{
-			//если workers[i].first == true , то продолжаем работу, иначе завершаемся
-			workers[i] = std::make_pair(true , std::thread([this, i]() {
-				std::packaged_task<R()> current_task;
+			workers[i] = std::make_pair(true, std::thread(&thread_pool<R>::invoke, this, i));
+			//workers[i] = std::make_pair(true, std::thread(&thread_pool<R, A>::invoke, this, i));
+		}
+	}
 
-				while (workers[i].first)
-				{
-					task_queue.pop(current_task);
-					current_task();
-				}
-			}));
+	void invoke(size_t i)
+	{
+
+		async_task current_task;
+
+		while (workers[i].first)
+		{
+			task_queue.pop(current_task);
+
+			//run our function
+			//current_task.operator->(A ...);
+			current_task.operator->();
 		}
 	}
 
@@ -101,8 +100,12 @@ protected:
 		}
 	}
 
-	//кладём в вектор пары, чтобы знать, когда завершать thread
-	std::vector<std::pair< bool, std::thread> > workers;
-	thread_safe_queue<std::packaged_task<R()>> task_queue;
+	//we keep pairs to know when we should terminate threads
+	std::vector<std::pair<bool, std::thread>> workers;
+	
+	//we have to keep pointer because of packeged_task doesn't have a copy constructor
+	//typedef std::shared_ptr<std::packaged_task<R(A ...)>> async_task;
+	typedef std::shared_ptr<std::packaged_task<R()>> async_task;
+	thread_safe_queue<async_task> task_queue;
 
 };
