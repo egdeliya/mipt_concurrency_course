@@ -16,39 +16,39 @@ void isPrime()
 	int number = 2;
 	int num_sqr;
 
-	while (true)
+	try
 	{
-		try {
-			my_queue.pop(number);
-		}
-		catch (std::exception & e) {
-			std::cout << e.what() << std::endl;
-		}
-
-
-		if (number == 0 || number == 1)
+		while (true)
 		{
-			std::cout << number << " isn't a prime number\n";
-			continue;
-		}
+			number = my_queue.pop();
 
-		//to stop this thread
-		if (number == stop_flag) return;
-
-		num_sqr = (int)std::sqrt(number) + 1;
-
-		int check = 2;
-
-		for (; check <= num_sqr; ++check)
-		{
-			if (number % check == 0)
+			if (number == 0 || number == 1)
 			{
 				std::cout << number << " isn't a prime number\n";
-				break;
+				continue;
 			}
-		}
 
-		if (check > num_sqr) std::cout << number << " is a prime number\n";
+			//to stop this thread
+			if (number == stop_flag) return;
+
+			num_sqr = (int)std::sqrt(number) + 1;
+
+			bool is_prime = true;
+
+			for (int check = 2; check <= num_sqr; ++check)
+			{
+				if (number % check == 0)
+				{
+					is_prime = false;
+					break;
+				}
+			}
+
+			(is_prime) ? (std::cout << number << " is a prime number\n") : (std::cout << number << " isn't a prime number\n");
+		}
+	}
+	catch (std::exception & e) {
+		std::cout << e.what() << std::endl;
 	}
 
 }
@@ -105,7 +105,24 @@ void test_function_for_thread_safe_queue()
 
 int main()
 {
-	test_function_for_thread_safe_queue();
+	try
+	{
+		test_function_for_thread_safe_queue();
+	}
+	catch (std::exception& e)
+	{
+		std::cout << e.what() << std::endl;
+	}
+
+	/*for (size_t i = 0; i < magic_number; i++)
+	{
+		my_queue.enqueue(i);
+	}
+
+	for (size_t i = 0; i < magic_number; i++)
+	{
+		isPrime();
+	}*/
 
 	system("pause");
 	return 0;

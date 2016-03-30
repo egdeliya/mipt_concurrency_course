@@ -16,6 +16,8 @@ public:
 	
 	void enqueue(const T&);
 
+	T pop();
+
 	void pop(T&);
 
 	//T&& move_pop();

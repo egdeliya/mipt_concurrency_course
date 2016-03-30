@@ -6,14 +6,16 @@
 #include <algorithm>
 #include "thread_pool.h"
 
-const int magic_number = 9;
+const size_t array_size = 1000000;
 
-int sum(int step, std::vector<int>& vec)
+using namespace std;
+
+int func_sum(int start, int step, std::vector<int>& vec)
 {
 	int sum = 0;
-	if (step < vec.size() - 1)
+	if (start < vec.size())
 	{
-		for (size_t i = step; i < vec.size(); i += step)
+		for (size_t i = start; i < vec.size(); i += step)
 		{
 			sum += vec[i];
 		}
@@ -23,41 +25,75 @@ int sum(int step, std::vector<int>& vec)
 
 void test_func_for_pool()
 {
-	//thread_pool<int, int, std::vector<int>&> pool;
-	thread_pool<int> pool;
-
-	std::vector<int> our_array(magic_number);
-
-	srand((unsigned)time(0));
-
-	for (size_t i = 0; i < magic_number; i++)
+	try
 	{
-		our_array[i] = -100 % rand() + 200;
+		thread_pool<int> pool;
+
+		std::vector<int> our_array(array_size);
+		srand((unsigned)time(NULL));
+		for (size_t i = 0; i < array_size; i++)
+		{
+			our_array[i] = rand() % 100;
+			srand(i);
+		}
+		std::cout << std::endl;
+
+		//std::cout << "And now we are going to run functions to calculate the sum of the elements of this array, \n";
+		int sum = 0;
+		std::vector<std::future<int>> futures;
+		for (size_t i = 0; i < 100; i++)
+		{
+			futures.emplace_back(pool.submit(std::bind(func_sum, i, 10000, our_array)));
+		}
+
+		for (size_t i = 0; i < futures.size(); i++)
+		{
+			sum += futures[i].get();
+		}
+		std::cout << "The sum is: " << sum << std::endl;
 	}
-
-	std::cout << "Our array is: \n";
-	for each (int var in our_array)
+	catch (std::exception& e)
 	{
-		std::cout << var << "  ";
-	}
-	std::cout << std::endl;
-
-	std::cout << "And now we are going to run functions to calculate the sum of the elements of this array, \n";
-	
-	for (size_t i = 0; i < 4; i++)
-	{
-		//pool.submit(std::bind(std::packaged_task<int(int, std::vector<int>&)>, i, our_array));
-		//pool.submit(std::packaged_task<int(int, std::vector<int>&)>(std::bind(sum, i, our_array)));
-		std::future<int> fut(pool.submit(std::packaged_task<int()>(std::bind(sum, i, our_array))));
-
+		std::cout << "from test function " << e.what() << std::endl;
 	}
 }
 
+long test(long limit)
+{
+	long long a = 0;
+	for (int i = 0; i < limit; ++i) {
+		a++;
+		if (i % 10000000000 == 0)
+			std::cout << "I'm counting. ID ==" << this_thread::get_id() << std::endl;
+	}
+	return a;
+}
 int main()
 {
-	//thread_pool<int> pool;
-	test_func_for_pool();
+	
+	try
+	{
+		test_func_for_pool();
+	}
+	catch (std::exception& e)
+	{
+		cout << "from test fun for pool in main " << e.what() << std::endl;
+	}
 
+
+	//Another test
+	thread_pool<long> gogoLovers(10);
+
+	vector<future<long>> futures;
+
+	for (long double i = 1; i < 858990000345; i *= 1.2) {
+		futures.emplace_back(gogoLovers.submit(std::bind(test, i)));
+	}
+
+	for (auto& it : futures)
+		std::cout << "Got result : " << it.get() << std::endl;
+		
+	
 	system("pause");
 	return 0;
 }
