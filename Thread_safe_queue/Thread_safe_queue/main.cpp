@@ -114,16 +114,6 @@ int main()
 		std::cout << e.what() << std::endl;
 	}
 
-	/*for (size_t i = 0; i < magic_number; i++)
-	{
-		my_queue.enqueue(i);
-	}
-
-	for (size_t i = 0; i < magic_number; i++)
-	{
-		isPrime();
-	}*/
-
 	system("pause");
 	return 0;
 }

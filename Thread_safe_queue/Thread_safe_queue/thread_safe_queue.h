@@ -20,8 +20,6 @@ public:
 
 	void pop(T&);
 
-	//T&& move_pop();
-
 private:
 	std::queue <T> intern;
 	std::mutex mut;
@@ -32,4 +30,4 @@ private:
 	const size_t over_size;
 };
 
-#include "thread_safe_queue.hpp"
+#include "thread_safe_queue.ñpp"

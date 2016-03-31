@@ -19,6 +19,6 @@ private:
 	std::atomic<int> current_ticket;
 };
 
-#include "Spinlock_Realisation.hpp"
+#include "Spinlock_Realisation.cpp"
 
 #endif
