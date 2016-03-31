@@ -86,7 +86,7 @@ int main()
 
 	vector<future<long>> futures;
 
-	for (long double i = 1; i < 858990000345; i *= 1.2) {
+	for (long double i = 1; i < 850345; i *= 1.2) {
 		futures.emplace_back(gogoLovers.submit(std::bind(test, i)));
 	}
 
