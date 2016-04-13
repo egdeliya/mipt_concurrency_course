@@ -6,7 +6,6 @@
 #include <condition_variable>
 
 static const size_t threads_number = 10;
-static int counter = 2;
 
 using namespace std;
 
@@ -28,13 +27,6 @@ void main()
 	{
 		//хотим, чтобы потоки пять раз прошли через барьер
 		th[i] = std::thread(func, i, 5);
-	}
-
-	int buf_counter = counter;
-	for (size_t i = 0; i < buf_counter; i++)
-	{
-		std::this_thread::sleep_for(100ms);
-		//--counter;
 	}
 
 	for (size_t i = 0; i < threads_number; i++)
