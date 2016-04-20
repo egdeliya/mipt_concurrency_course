@@ -49,3 +49,9 @@ T thread_safe_queue<T>::pop()
 	return element;
 }
 
+template <typename T>
+void thread_safe_queue<T>::shutdown()
+{
+
+}
+

@@ -20,6 +20,8 @@ public:
 
 	void pop(T&);
 
+	void shutdown();
+
 private:
 	std::queue <T> intern;
 	std::mutex mut;
@@ -30,4 +32,4 @@ private:
 	const size_t over_size;
 };
 
-#include "thread_safe_queue.ñpp"
+#include "thread_safe_queue.hpp"
