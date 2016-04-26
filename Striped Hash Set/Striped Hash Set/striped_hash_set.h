@@ -9,15 +9,17 @@ class striped_hash_set
 {
 public:
 
-	striped_hash_set(size_t num_stripes, double bounder = 0.7) : locks_(num_stripes), bounder_(bounder) {};
+	striped_hash_set(size_t num_stripes, double bounder = 0.7) : locks_(num_stripes), bounder_(bounder), table_(num_stripes) {};
 	
 	striped_hash_set(size_t num_stripes, H func, double bounder = 0.7) : striped_hash_set(num_stripes, bounder), hash_function_(func) {};
 
 	void add(const T&);
 
-	bool contauns(const T&);
+	bool contains(const T&);
 
 private:
+
+	void rehash();
 
 	// вектор мьютексов, котрорые защищают нашу таблицу
 	std::vector<rw_mutex> locks_;

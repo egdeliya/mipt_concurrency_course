@@ -11,6 +11,7 @@ void rw_mutex_test()
 int main()
 {
 	striped_hash_set<int> hash_table(5);
+	hash_table.add(90);
 
 	rw_mutex_test();
 	return 0;
