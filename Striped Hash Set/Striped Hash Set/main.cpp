@@ -8,7 +8,7 @@ void rw_mutex_test()
 
 int main()
 {
-	striped_hash_set hash_table(5);
+	striped_hash_set<int> hash_table(5);
 
 	rw_mutex_test();
 	return 0;
