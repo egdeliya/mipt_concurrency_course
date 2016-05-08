@@ -4,8 +4,9 @@
 #include <mutex>
 #include <condition_variable>
 #include <stdexcept>
+#include <atomic>
 
-template <typename T, class Container = std::deque<T> >
+template <class T, class Container = std::deque<T> >
 class thread_safe_queue
 {
 public:
@@ -17,7 +18,6 @@ public:
 
 	void enqueue(const T& item)
 	{
-		//std::cout << "I'm in the enqueue!\n";
 		if (shut_down)
 		{
 			throw std::logic_error("Method shut down was invoked");
@@ -25,22 +25,52 @@ public:
 
 		std::unique_lock<std::mutex> locker(mut);
 
-		overflow.wait(locker, [this]() {return (intern.size() < over_size) && (!shut_down); });
+		// ждем пока кто-нибудь что-нибудь полжит в контейнер или пока будет вызван метод shutdown
+		overflow.wait(locker, [this]() {return (intern.size() < over_size) || (shut_down); });
 
-		intern.push_back(T(item));
+		if (shut_down)
+		{
+			throw std::logic_error("Method shut down was invoked");
+		}
+
+		intern.push_back(std::move(item));
 
 		empty.notify_all();
 
-		//locker.unlock();
+	}
+
+	// этот метод нужен для объектов без конструктора копирования 
+	void enqueue(T&& item)
+	{
+		if (shut_down)
+		{
+			throw std::logic_error("Method shut down was invoked");
+		}
+
+		std::unique_lock<std::mutex> locker(mut);
+
+		overflow.wait(locker, [this]() {return (intern.size() < over_size) || (shut_down); });
+
+		if (shut_down)
+		{
+			throw std::logic_error("Method shut down was invoked");
+		}
+
+		intern.push_back(std::move(item));
+
+		empty.notify_all();
+
 	}
 
 	void pop(T& item)
 	{
 		std::unique_lock<std::mutex> locker(mut);
 
-		empty.wait(locker, [this]() {return (intern.size() > 0) && (!shut_down); });
+		// ждём пока кто-нибудь что-нибудь  положит в очередь или пока не будет вызван метод shutdown
+		empty.wait(locker, [this]() {return (intern.size() > 0) || (shut_down); });
 
-		if (shut_down)
+		// если кто-то вызвал shutdown и очередь пуста, то кидаем исключение, иначе извлекаем элемент из очереди
+		if (shut_down && (intern.size() == 0))
 		{
 			throw std::logic_error("The queue is empty and method shut down was invoked");
 		}
@@ -50,12 +80,11 @@ public:
 
 		overflow.notify_all();
 
-		//locker.unlock();
-
 	}
 
 	void shutdown()
 	{
+		// просто ставим флажок того что вызван метод shut_down
 		shut_down = true;
 	}
 
@@ -67,6 +96,6 @@ private:
 	std::condition_variable overflow;
 
 	const size_t over_size;
-	bool shut_down;
+	std::atomic_bool shut_down;
 };
 
