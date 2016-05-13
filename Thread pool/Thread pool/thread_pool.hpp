@@ -1,7 +1,5 @@
-#pragma once
-
 template <class R>
-thread_pool<R>::thread_pool(): task_queue(10)
+thread_pool<R>::thread_pool(): task_queue(10), shut_down(false)
 {
 	unsigned workers_number = default_num_workers();
 
@@ -15,8 +13,8 @@ template <class R>
 thread_pool<R>::thread_pool(size_t workers_number) : thread_pool(workers_number, 10) {};
 
 template <class R>
-thread_pool<R>::thread_pool(size_t workers_number, size_t tasks_number)
-	: task_queue(tasks_number), workers(workers_number)
+thread_pool<R>::thread_pool(size_t workers_number, size_t tasks_number) : 
+	workers(workers_number), task_queue(tasks_number), shut_down(false)
 {
 	initializer();
 }
@@ -39,6 +37,8 @@ std::future<R> thread_pool<R>::submit(std::function<R()> foo)
 template <class R>
 void thread_pool<R>::shutdown()
 {
+	if (!shut_down) shut_down = true;
+
 	for (size_t i = 0; i < workers.size(); i++)
 	{
 		workers[i].first = false;
@@ -48,7 +48,7 @@ void thread_pool<R>::shutdown()
 	for (size_t i = 0; i < workers.size(); i++)
 	{
 		//we have to do that to thread check workers[i].first
-		task_queue.enqueue(std::make_shared<std::packaged_task<R()>>([]() {return 0; }));
+		task_queue.enqueue(std::make_shared<std::packaged_task<R()>>([]() {return R(); }));
 	}
 
 	for (size_t i = 0; i < workers.size(); i++)
@@ -60,7 +60,7 @@ void thread_pool<R>::shutdown()
 template <class R>
 thread_pool<R>::~thread_pool()
 {
-	shutdown();
+	if (!shut_down) shutdown();
 }
 
 template <class R>
@@ -80,8 +80,8 @@ void thread_pool<R>::invoke(size_t thread_index)
 	{
 		while (workers[thread_index].first)
 		{
-			async_task current_task = task_queue.pop();
-			current_task->operator()();
+			std::shared_ptr<async_task> current_task = task_queue.pop();
+			current_task->operator->();
 		}
 	}
 	catch (std::exception& e)

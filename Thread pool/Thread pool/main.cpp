@@ -30,7 +30,7 @@ void test_func_for_pool()
 		thread_pool<int> pool;
 
 		std::vector<int> our_array(array_size);
-		srand((unsigned)time(NULL));
+		srand((unsigned)time(nullptr));
 		for (size_t i = 0; i < array_size; i++)
 		{
 			our_array[i] = rand() % 100;
