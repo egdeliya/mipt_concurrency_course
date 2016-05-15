@@ -42,4 +42,4 @@ private:
 	std::atomic_bool shut_down;
 };
 
-#include "thread_pool.hpp"
+#include "thread_pool.cpp"
