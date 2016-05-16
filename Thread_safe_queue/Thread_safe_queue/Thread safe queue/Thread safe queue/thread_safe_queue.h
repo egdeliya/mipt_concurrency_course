@@ -1,16 +1,12 @@
-#pragma once
-
-#include <queue>
 #include <mutex>
-#include <condition_variable>
-#include <stdexcept>
+#include <deque>
 #include <atomic>
 
-template <class T, class Container=std::deque<T> >
+template <class T, class Container = std::deque<T> >
 class thread_safe_queue
 {
 public:
-	explicit thread_safe_queue(size_t capacity) : over_size(capacity), shut_down(false) {}
+	explicit thread_safe_queue(size_t capacity) : shut_down(false), over_size(capacity) {}
 
 	thread_safe_queue(thread_safe_queue<T> &) = delete;
 
@@ -26,12 +22,7 @@ public:
 		std::unique_lock<std::mutex> locker(mut);
 
 		// ждем пока кто-нибудь что-нибудь положит в контейнер или пока будет вызван метод shutdown
-		overflow.wait(locker, [this]() {return (intern.size() < over_size) || (shut_down); });
-
-		if (shut_down)
-		{
-			throw std::logic_error("Method shut down was invoked");
-		}
+		overflow.wait(locker, [this]() {return (intern.size() < over_size); });
 
 		intern.push_back(std::move(item));
 
@@ -49,12 +40,7 @@ public:
 
 		std::unique_lock<std::mutex> locker(mut);
 
-		overflow.wait(locker, [this]() {return (intern.size() < over_size) || (shut_down); });
-
-		if (shut_down)
-		{
-			throw std::logic_error("Method shut down was invoked");
-		}
+		overflow.wait(locker, [this]() {return (intern.size() < over_size); });
 
 		intern.push_back(std::move(item));
 
@@ -67,7 +53,8 @@ public:
 		std::unique_lock<std::mutex> locker(mut);
 
 		// ждём пока кто-нибудь что-нибудь  положит в очередь или пока не будет вызван метод shutdown
-		empty.wait(locker, [this]() {return (intern.size() > 0) || (shut_down); });
+		// на пустой очереди
+		empty.wait(locker, [this]() {return (intern.size() > 0) || (shut_down && (intern.size() == 0)); });
 
 		// если кто-то вызвал shutdown и очередь пуста, то кидаем исключение, иначе извлекаем элемент из очереди
 		if (shut_down && (intern.size() == 0))
@@ -76,37 +63,19 @@ public:
 		}
 
 		item = std::move(intern.front());
+
 		intern.pop_front();
 
 		overflow.notify_all();
 
-	}
-
-	std::shared_ptr<T> pop()
-	{
-		std::unique_lock<std::mutex> locker(mut);
-
-		// ждём пока кто-нибудь что-нибудь  положит в очередь или пока не будет вызван метод shutdown
-		empty.wait(locker, [this]() {return (intern.size() > 0) || (shut_down); });
-
-		// если кто-то вызвал shutdown и очередь пуста, то кидаем исключение, иначе извлекаем элемент из очереди
-		if (shut_down && (intern.size() == 0))
-		{
-			throw std::logic_error("The queue is empty and method shut down was invoked");
-		}
-
-		T&& item = std::move(intern.front());
-		intern.pop_front();
-
-		overflow.notify_all();
-
-		return std::make_shared<T>(item);
 	}
 
 	void shutdown()
 	{
-		// просто ставим флажок того что вызван метод shut_down
+		// просто ставим флажок того что вызван метод shut_down  будим всех, кто завис на wait
 		shut_down = true;
+		empty.notify_all();
+		overflow.notify_all();
 	}
 
 private:
@@ -116,7 +85,6 @@ private:
 	std::condition_variable empty;
 	std::condition_variable overflow;
 
-	const size_t over_size;
 	std::atomic_bool shut_down;
+	const size_t over_size;
 };
-

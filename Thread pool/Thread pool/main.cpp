@@ -1,18 +1,15 @@
-#pragma once
-
+#include "thread_pool.h"
 #include <iostream>
 #include <vector>
 #include <thread>
-#include <algorithm>
-#include "thread_pool.h"
 
-const size_t array_size = 1000000;
+const size_t array_size = 1000;
 
 using namespace std;
 
 int func_sum(int start, int step, std::vector<int>& vec)
 {
-	int sum = 0;
+	auto sum = 0;
 	if (start < vec.size())
 	{
 		for (size_t i = start; i < vec.size(); i += step)
@@ -30,7 +27,7 @@ void test_func_for_pool()
 		thread_pool<int> pool;
 
 		std::vector<int> our_array(array_size);
-		srand((unsigned)time(nullptr));
+		srand(static_cast<unsigned>(time(nullptr)));
 		for (size_t i = 0; i < array_size; i++)
 		{
 			our_array[i] = rand() % 100;
@@ -38,12 +35,12 @@ void test_func_for_pool()
 		}
 		std::cout << std::endl;
 
-		//std::cout << "And now we are going to run functions to calculate the sum of the elements of this array, \n";
-		int sum = 0;
+		// считаем сумму элементов массива в несколько потоков
+		auto sum = 0;
 		std::vector<std::future<int>> futures;
-		for (size_t i = 0; i < 100; i++)
+		for (size_t i = 0; i < 10; i++)
 		{
-			futures.emplace_back(pool.submit(std::bind(func_sum, i, 10000, our_array)));
+			futures.emplace_back(pool.submit(std::bind(func_sum, i, 100, our_array)));
 		}
 
 		for (size_t i = 0; i < futures.size(); i++)
@@ -51,6 +48,8 @@ void test_func_for_pool()
 			sum += futures[i].get();
 		}
 		std::cout << "The sum is: " << sum << std::endl;
+
+		pool.shutdown();
 	}
 	catch (std::exception& e)
 	{
@@ -61,7 +60,7 @@ void test_func_for_pool()
 long test(long limit)
 {
 	long long a = 0;
-	for (int i = 0; i < limit; ++i) {
+	for (auto i = 0; i < limit; ++i) {
 		a++;
 		if (i % 10000000000 == 0)
 			std::cout << "I'm counting. ID ==" << this_thread::get_id() << std::endl;
@@ -71,13 +70,10 @@ long test(long limit)
 
 int main()
 {
-	
 	try
 	{
 		test_func_for_pool();
-	}
-	catch (std::exception& e)
-	{
+	} catch (std::exception& e) {
 		cout << "from test fun for pool in main " << e.what() << std::endl;
 	}
 
@@ -93,7 +89,8 @@ int main()
 
 	for (auto& it : futures)
 		std::cout << "Got result : " << it.get() << std::endl;
-		
+	
+	gogoLovers.shutdown();
 	
 	system("pause");
 	return 0;
