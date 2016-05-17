@@ -2,7 +2,8 @@
 #include <math.h>
 #include <vector>
 #include <thread>
-#include "Thread safe queue/Thread safe queue/thread_safe_queue.h"
+//#include "Thread safe queue/Thread safe queue/thread_safe_queue.h"
+#include "C:\Users\Delya\Documents\Visual Studio 2015\Projects\4 MIPT\mipt_concurrency_course\Thread_safe_queue\Thread_safe_queue\thread_safe_queue.h"
 
 const int magic_number = 9;
 const int threads_number = 1;
