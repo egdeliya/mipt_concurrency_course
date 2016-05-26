@@ -84,23 +84,17 @@ class striped_hash_set
 {
 public:
 
-	explicit striped_hash_set(size_t num_stripes, double bounder = 0.7, size_t new_gr_factor = 5) : locks_(num_stripes), growth_factor_(new_gr_factor), bounder_(bounder), current_num_elements_(0), table_(num_stripes) {};
-
+	explicit striped_hash_set(size_t num_stripes, double bounder = 10, size_t new_gr_factor = 5) : locks_(num_stripes), growth_factor_(new_gr_factor), bounder_(bounder), current_num_elements_(0), table_(num_stripes) {};
 	void add(const T&);
-
 	bool contains(const T&);
-
 	void remove(const T&);
-
 	void print() const;
 
 private:
 
 	void rehash();
-
-	int get_bucket_index(size_t) const;
-
-	int get_stripe_index(size_t) const;
+	size_t get_bucket_index(size_t) const;
+	size_t get_stripe_index(size_t) const;
 
 	// вектор мьютексов, котрорые защищают нашу таблицу
 	std::vector<rw_mutex> locks_;
@@ -122,36 +116,28 @@ private:
 
 };
 
-//#include "striped_hash_set.cpp"
-
 template <typename T, class H>
 void striped_hash_set<T, H>::add(const T& e)
 {
-	// проверяем, лежит ли элемент в множестве
-	if (contains(e))
-	{
-		return;
-	}
-
 	// проверяем, нужно ли расширить нашу таблицу
 	if (static_cast<double>(current_num_elements_.load()) / table_.size() >= bounder_)
 	{
 		rehash();
 	}
 
-	// вычисляем индекс в таблице и индекс мьютекса
-	int bucket_index = get_bucket_index(hash_function_(e));
-	int mut_index = get_stripe_index(bucket_index);
+	size_t hash_value = hash_function_(e);
 
 	// захватываем мьютекс
-	locks_[mut_index].write_lock();
+	locks_[get_stripe_index(hash_value)].write_lock();
+
+	size_t bucket_index = get_bucket_index(hash_value);
 
 	bool find_elem = false;
 
 	// проверяем, есть ли элемент
 	for (auto it : table_[bucket_index])
 	{
-		if (it == e) 
+		if (it == e)
 		{
 			find_elem = true;
 			break;
@@ -165,21 +151,22 @@ void striped_hash_set<T, H>::add(const T& e)
 		current_num_elements_.fetch_add(1);
 	}
 
-	// отпускаем мьютекс!!!!!!
-	locks_[mut_index].write_unlock();
+	// отпускаем мьютекс
+	locks_[get_stripe_index(hash_value)].write_unlock();
 }
 
 template <typename T, class H>
 bool striped_hash_set<T, H>::contains(const T& element)
 {
-	// вычисляем хеш от нашего значения, а заодно и индекс мьютекса
-	int bucket_index = get_bucket_index(hash_function_(element));
-	int mut_index = get_stripe_index(bucket_index);
-
-	bool result = false;
+	// вычисляем хеш от нашего значения
+	size_t hash_value = hash_function_(element);
 
 	// захватываем мьютекс на чтение
-	locks_[mut_index].read_lock();
+	locks_[get_stripe_index(hash_value)].read_lock();
+
+	size_t bucket_index = get_bucket_index(hash_value);
+
+	bool result = false;
 
 	// проверяем, есть ли элемент
 	for (auto it : table_[bucket_index])
@@ -188,7 +175,7 @@ bool striped_hash_set<T, H>::contains(const T& element)
 	}
 
 	// отпускаем мьютекс
-	locks_[mut_index].read_unlock();
+	locks_[get_stripe_index(hash_value)].read_unlock();
 
 	return result;
 }
@@ -208,7 +195,9 @@ void striped_hash_set<T, H>::rehash()
 			return;
 		}
 	}
-	std::vector<std::forward_list<T>> new_table(table_.size() * growth_factor_);
+
+	size_t new_size = table_.size() * growth_factor_;
+	std::vector<std::forward_list<T>> new_table(new_size);
 
 	// перемещаем все элементы
 	for (size_t ind = 0; ind < table_.size(); ind++)
@@ -218,11 +207,8 @@ void striped_hash_set<T, H>::rehash()
 			T element = table_[ind].front();
 			table_[ind].pop_front();
 
-			// вычисляем индекс корзины
-			int bucket_index = get_bucket_index(hash_function_(element));
-
 			// добавляем элемент
-			new_table[bucket_index].push_front(element);
+			new_table[hash_function_(element) % new_size].push_front(element);
 		}
 	}
 
@@ -235,74 +221,32 @@ void striped_hash_set<T, H>::rehash()
 }
 
 template <typename T, class H>
-int striped_hash_set<T, H>::get_bucket_index(size_t hash_value) const
+size_t striped_hash_set<T, H>::get_bucket_index(size_t hash_value) const
 {
 	return (hash_value % table_.size());
 }
 
 template <typename T, class H>
-int striped_hash_set<T, H>::get_stripe_index(size_t bucket_index) const
+size_t striped_hash_set<T, H>::get_stripe_index(size_t hash_value) const
 {
-	return (bucket_index % locks_.size());
+	return (hash_value % locks_.size());
 }
 
 template <typename T, class H>
 void striped_hash_set<T, H>::remove(const T& element)
 {
-	// проверяем, лежит ли элемент в множестве
-	if (!contains(element))
-	{
-		return;
-	}
-
 	// вычисляем хеш от нашего значения, а заодно и индекс мьютекса
-	int bucket_index = get_bucket_index(hash_function_(element));
-	int mut_index = get_stripe_index(bucket_index);
+	size_t hash_value = hash_function_(element);
 
 	// захватываем мьютекс
-	locks_[mut_index].write_lock();
+	locks_[get_stripe_index(hash_value)].write_lock();
 
-	bool find_elem = false;
+	size_t bucket_index = get_bucket_index(hash_value);
 
-	// проверяем, есть ли элемент
-	for (auto it : table_[bucket_index])
-	{
-		if (it == element)
-		{
-			find_elem = true;
-			break;
-		}
-	}
-
-	if (find_elem == true)
-	{
-		return;
-	}
-	
-	// удаляем элемент
-	for (auto it = table_[bucket_index].before_begin(); it != table_[bucket_index].end(); ++it)
-	{
-		if (it == table_[bucket_index].end())
-		{
-			// отпускаем мьютекс!!!!!!
-			locks_[mut_index].write_unlock();
-			return;
-		}
-
-		if (*std::next(it) == element)
-		{
-			table_[bucket_index].erase_after(it);
-
-			current_num_elements_.fetch_add(-1);
-
-			// отпускаем мьютекс!!!!!!
-			locks_[mut_index].write_unlock();
-			return;
-		}
-	}
+	table_[bucket_index].remove(element);
 
 	// отпускаем мьютекс!!!!!!
-	locks_[mut_index].write_unlock();
+	locks_[get_stripe_index(hash_value)].write_unlock();
 }
 
 template <typename T, class H>
