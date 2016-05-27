@@ -1,90 +1,15 @@
-//#include "read_write_mutex.h"
 #include <vector>
 #include <forward_list>
 #include <mutex>
 #include <iostream>
 #include <atomic>
 
-// честный rw mutex
-class rw_mutex
-{
-public:
-
-	//lock на запись
-	void write_lock();
-
-	void write_unlock();
-
-	void read_lock();
-
-	void read_unlock();
-
-private:
-	std::mutex ring;
-	std::mutex lightswitch;
-	std::mutex turnstile;
-	unsigned readers;
-};
-
-void rw_mutex::write_lock()
-{
-	// писатель пробует пройти через турникет, а значит больше читатели и другие писатели не смогут пройти
-	turnstile.lock();
-
-	ring.lock();
-
-	turnstile.unlock();
-}
-
-void rw_mutex::write_unlock()
-{
-	ring.unlock();
-}
-
-void rw_mutex::read_lock()
-{
-	// когда писатель захочет что-нибудь написать, новые читатели 
-	// не смогут пройти
-	turnstile.lock();
-	turnstile.unlock();
-
-	// атомарно увеличиваем счетчик читателей и захватываем мьютекс на чтение
-	lightswitch.lock();
-
-	++readers;
-
-	// если читатель первый, то он захватывает мьютекс на чтение
-	if (readers == 1)
-	{
-		ring.lock();
-	}
-
-	lightswitch.unlock();
-
-}
-
-void rw_mutex::read_unlock()
-{
-	// атомарно уменьшаем счетчик читателей и, если нужно, отпускаем мьютекс
-	lightswitch.lock();
-
-	--readers;
-
-	// если больше не осталось читателей, то отпускаем мьютекс
-	if (readers == 0)
-	{
-		ring.unlock();
-	}
-
-	lightswitch.unlock();
-}
-
 template <typename T, class H = std::hash<T>>
 class striped_hash_set
 {
 public:
 
-	explicit striped_hash_set(size_t num_stripes, double bounder = 10, size_t new_gr_factor = 5) : locks_(num_stripes), growth_factor_(new_gr_factor), bounder_(bounder), current_num_elements_(0), table_(num_stripes) {};
+	explicit striped_hash_set(size_t num_stripes, double bounder = 100., size_t new_gr_factor = 5) : locks_(num_stripes), growth_factor_(new_gr_factor), bounder_(bounder), current_num_elements_(0), table_(num_stripes * growth_factor_) {};
 	void add(const T&);
 	bool contains(const T&);
 	void remove(const T&);
@@ -92,12 +17,12 @@ public:
 
 private:
 
-	void rehash();
+	void rehash(size_t);
 	size_t get_bucket_index(size_t) const;
 	size_t get_stripe_index(size_t) const;
 
-	// вектор мьютексов, котрорые защищают нашу таблицу
-	std::vector<rw_mutex> locks_;
+	// вектор мьютексов, которые защищают нашу таблицу
+	std::vector<std::mutex> locks_;
 
 	// коэффициент расширения таблицы
 	double growth_factor_;
@@ -106,7 +31,7 @@ private:
 	double bounder_;
 
 	// текущее количество элементов в таблице
-	std::atomic<int> current_num_elements_;
+	std::atomic<size_t> current_num_elements_;
 
 	// хеш-функция
 	H hash_function_;
@@ -119,40 +44,23 @@ private:
 template <typename T, class H>
 void striped_hash_set<T, H>::add(const T& e)
 {
-	// проверяем, нужно ли расширить нашу таблицу
-	if (static_cast<double>(current_num_elements_.load()) / table_.size() >= bounder_)
-	{
-		rehash();
-	}
-
 	size_t hash_value = hash_function_(e);
 
 	// захватываем мьютекс
-	locks_[get_stripe_index(hash_value)].write_lock();
+	std::unique_lock<std::mutex> lock(locks_[get_stripe_index(hash_value)]);
 
 	size_t bucket_index = get_bucket_index(hash_value);
 
-	bool find_elem = false;
+	table_[bucket_index].push_front(e);
+	current_num_elements_.fetch_add(1);
 
-	// проверяем, есть ли элемент
-	for (auto it : table_[bucket_index])
+	// проверяем, нужно ли расширить нашу таблицу
+	if (static_cast<double>(current_num_elements_.load()) / table_.size() > bounder_)
 	{
-		if (it == e)
-		{
-			find_elem = true;
-			break;
-		}
+		size_t size = table_.size();
+		lock.unlock();
+		rehash(size);
 	}
-
-	// добавляем элемент
-	if (find_elem == false)
-	{
-		table_[bucket_index].push_front(e);
-		current_num_elements_.fetch_add(1);
-	}
-
-	// отпускаем мьютекс
-	locks_[get_stripe_index(hash_value)].write_unlock();
 }
 
 template <typename T, class H>
@@ -162,45 +70,40 @@ bool striped_hash_set<T, H>::contains(const T& element)
 	size_t hash_value = hash_function_(element);
 
 	// захватываем мьютекс на чтение
-	locks_[get_stripe_index(hash_value)].read_lock();
-
-	size_t bucket_index = get_bucket_index(hash_value);
-
-	bool result = false;
+	std::unique_lock<std::mutex> lock(locks_[get_stripe_index(hash_value)]);
 
 	// проверяем, есть ли элемент
-	for (auto it : table_[bucket_index])
+	for (auto it : table_[get_bucket_index(hash_value)])
 	{
-		if (it == element) result = true;
+		if (it == element) return true;
 	}
 
-	// отпускаем мьютекс
-	locks_[get_stripe_index(hash_value)].read_unlock();
-
-	return result;
+	return false;
 }
 
 template <typename T, class H>
-void striped_hash_set<T, H>::rehash()
+void striped_hash_set<T, H>::rehash(size_t size)
 {
-	size_t s = table_.size();
-	for (size_t i = 0; i < locks_.size(); i++)
-	{
-		locks_[i].write_lock();
+	std::vector<std::unique_lock<std::mutex>> local_locks;
+	
+	local_locks.emplace_back(locks_[0]);
 
-		// проверяем, нужно ли все ещё расширять таблицу
-		if ((i == 0) && (s != table_.size()))
-		{
-			locks_[i].write_unlock();
-			return;
-		}
+	// проверяем, нужно ли все ещё расширять таблицу
+	if (size != table_.size())
+	{
+		return;
+	}
+	
+	for (size_t i = 1; i < locks_.size(); i++)
+	{
+		local_locks.emplace_back(locks_[i]);
 	}
 
-	size_t new_size = table_.size() * growth_factor_;
+	size_t new_size = size * growth_factor_;
 	std::vector<std::forward_list<T>> new_table(new_size);
 
 	// перемещаем все элементы
-	for (size_t ind = 0; ind < table_.size(); ind++)
+	for (size_t ind = 0; ind < size; ind++)
 	{
 		while (!table_[ind].empty())
 		{
@@ -214,10 +117,6 @@ void striped_hash_set<T, H>::rehash()
 
 	table_.swap(new_table);
 
-	for (size_t i = 0; i < locks_.size(); i++)
-	{
-		locks_[i].write_unlock();
-	}
 }
 
 template <typename T, class H>
@@ -239,14 +138,11 @@ void striped_hash_set<T, H>::remove(const T& element)
 	size_t hash_value = hash_function_(element);
 
 	// захватываем мьютекс
-	locks_[get_stripe_index(hash_value)].write_lock();
+	std::unique_lock<std::mutex> lock(locks_[get_stripe_index(hash_value)]);
 
-	size_t bucket_index = get_bucket_index(hash_value);
+	table_[get_bucket_index(hash_value)].remove(element);
 
-	table_[bucket_index].remove(element);
-
-	// отпускаем мьютекс!!!!!!
-	locks_[get_stripe_index(hash_value)].write_unlock();
+	current_num_elements_.fetch_sub(1);
 }
 
 template <typename T, class H>
